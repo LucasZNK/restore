@@ -10,7 +10,7 @@ When using AI coding tools like Claude Code, simple Git operations consume token
 
 **Restore** is an interactive terminal application that:
 
-- **Lists save points**: Shows all commits with `[SAVE #N]` format in a clean menu
+- **Browse commits**: Shows all recent commits in a clean, navigable menu
 - **Preview changes**: See commit details, files changed, and diff preview before restoring
 - **Safe restore**: Handles uncommitted changes with options to stash, discard, or cancel
 - **Smart navigation**: Arrow key navigation with visual indicators for current position
@@ -18,7 +18,7 @@ When using AI coding tools like Claude Code, simple Git operations consume token
 
 ## How it works
 
-The tool looks for commits with the special format `[SAVE #N] Description`. These act as bookmarks in your Git history that you can easily navigate and restore to.
+The tool shows all recent commits and lets you navigate and restore to any of them. Simple interactive Git browsing without command-line complexity.
 
 ## Installation
 
@@ -46,27 +46,25 @@ Or run the installer:
 
 ## Usage
 
-### 1. Create save points
+### 1. Work normally with Git
 
-Create commits with the special `[SAVE #N]` format:
+Create commits as you normally would:
 
 ```bash
 # Work on your code...
 git add .
-git commit -m "[SAVE #1] Initial project setup"
+git commit -m "Initial project setup"
 
 # Make more changes...
 git add .
-git commit -m "[SAVE #2] Added user authentication"
+git commit -m "Added user authentication"
 
 # Continue development...
 git add .
-git commit -m "[SAVE #3] Fixed login bug"
+git commit -m "Fixed login bug"
 ```
 
-**Tip**: Use your AI assistant's `/save` command if available, or create these commits manually.
-
-### 2. Browse and restore save points
+### 2. Browse and restore commits
 
 Simply run `restore` in any Git repository:
 
@@ -85,20 +83,20 @@ Navigate with ↑↓ arrows, Enter to select, q to quit
 
 Recent Commits:
 
-→ 🔥✨ def4567 [SAVE #3] Fixed login bug ⏰ 2 hours ago by Lucas
-     abc1234 [SAVE #2] Added user authentication ⏰ 1 day ago by Lucas  
-     xyz9876 [SAVE #1] Initial project setup ⏰ 2 days ago by Lucas
+→ 🔥✨ def4567 Fixed login bug ⏰ 2 hours ago by Lucas
+     abc1234 Added user authentication ⏰ 1 day ago by Lucas  
+     xyz9876 Initial project setup ⏰ 2 days ago by Lucas
 ```
 
 ### 3. Navigation
 
-- **↑/↓ arrows**: Navigate between save points
-- **Enter**: Select and preview a save point
+- **↑/↓ arrows**: Navigate between commits
+- **Enter**: Select and preview a commit
 - **q**: Quit the application
 
 ### 4. Preview and restore
 
-When you select a save point, you'll see:
+When you select a commit, you'll see:
 
 - **Commit details**: Hash, message, date, author
 - **Changed files**: List of modified files with stats
@@ -116,41 +114,22 @@ If you have uncommitted changes when trying to restore, the tool will ask:
 ## Example Workflow
 
 ```bash
-# 1. Create a save point
+# 1. Make a commit
 git add .
-git commit -m "[SAVE #1] Working login form"
+git commit -m "Working login form"
 
 # 2. Continue coding, make changes...
-# 3. Create another save point
+# 3. Make another commit
 git add .
-git commit -m "[SAVE #2] Added validation"
+git commit -m "Added validation"
 
 # 4. Something breaks, need to go back
 restore
 
-# 5. Navigate to [SAVE #1], preview changes, restore
+# 5. Navigate to "Working login form", preview changes, restore
 # 6. You're back to the working login form state
 ```
 
-## Save Point Convention
-
-The tool recognizes commits with this exact pattern:
-- `[SAVE #N]` where N is any number
-- Followed by a space and description
-
-**Valid examples:**
-```bash
-[SAVE #1] Initial setup
-[SAVE #42] Fixed critical bug  
-[SAVE #999] Refactored user module
-```
-
-**Invalid examples:**
-```bash
-SAVE #1: Initial setup          # Missing brackets
-[Save #1] Initial setup         # Wrong capitalization  
-[SAVE#1] Initial setup          # Missing space
-```
 
 ## Features in Detail
 
@@ -180,9 +159,8 @@ SAVE #1: Initial setup          # Missing brackets
 
 ## Troubleshooting
 
-**"No save points found"**
-- Make sure you have commits with `[SAVE #N]` format
-- Check that you're in a Git repository
+**"No commits found"**
+- Check that you're in a Git repository with commit history
 
 **"Not in a Git repository"**  
 - Navigate to a folder that contains a `.git` directory
