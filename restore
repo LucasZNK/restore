@@ -1,7 +1,6 @@
 #!/bin/bash
 
-# Claude Interactive Git Restore Tool
-# Author: Claude Assistant  
+# Interactive Git Restore Tool
 # Description: Interactive arrow-navigable git commit browser and restore tool
 
 # Colors and formatting

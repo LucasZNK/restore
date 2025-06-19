@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Claude Restore Tool Installer
+# Restore Tool Installer
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -9,7 +9,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 BOLD='\033[1m'
 
-echo -e "${BOLD}${BLUE}Claude Restore Tool Installer${NC}"
+echo -e "${BOLD}${BLUE}Restore Tool Installer${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 
 # Check if restore script exists
