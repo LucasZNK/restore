@@ -57,3 +57,7 @@ test/
 tests/
 *.test
 *.spec
+
+# Claude Code
+CLAUDE.md
+.claude/

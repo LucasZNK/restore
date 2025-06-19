@@ -1,19 +1,55 @@
 #!/bin/bash
 
-# Claude Restore Tool - Interactive Git Save Point Manager
-# Author: Claude Assistant
-# Description: Interactive tool for managing and restoring git save points
+# Claude Interactive Git Restore Tool
+# Author: Claude Assistant  
+# Description: Interactive arrow-navigable git commit browser and restore tool
 
-# Colors for output
+# Colors and formatting
+RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-RED='\033[0;31m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 MAGENTA='\033[0;35m'
-NC='\033[0m' # No Color
+WHITE='\033[1;37m'
+GRAY='\033[0;90m'
+NC='\033[0m'
 BOLD='\033[1m'
 DIM='\033[2m'
+
+# Emojis and symbols
+ARROW="→"
+CURRENT_MARK="🔥"
+FRESH_MARK="✨"
+COMMIT_MARK="📝"
+BRANCH_MARK="🌿"
+TIME_MARK="⏰"
+
+# Terminal control
+clear_screen() {
+    printf '\033[2J\033[H'
+}
+
+hide_cursor() {
+    printf '\033[?25l'
+}
+
+show_cursor() {
+    printf '\033[?25h'
+}
+
+move_cursor() {
+    printf '\033[%d;%dH' "$1" "$2"
+}
+
+# Cleanup function
+cleanup() {
+    show_cursor
+    stty echo
+    exit 0
+}
+
+trap cleanup EXIT INT TERM
 
 # Function to check if we're in a git repository
 check_git_repo() {
@@ -23,43 +59,179 @@ check_git_repo() {
     fi
 }
 
-# Function to get all save points
-get_saves() {
-    git log --grep="\[SAVE #" --format="%h|%s|%ad|%H" --date=format:"%Y-%m-%d %H:%M" 2>/dev/null
+# Function to get commit data
+get_commits() {
+    git log --oneline --format="%H|%h|%s|%ad|%an" --date=format:"%Y-%m-%d %H:%M" -15 2>/dev/null
 }
 
-# Function to show file changes for a commit
+# Function to get relative time
+get_relative_time() {
+    local commit_hash=$1
+    git log -1 --format="%ar" "$commit_hash" 2>/dev/null
+}
+
+# Function to get current branch and commit info
+get_current_info() {
+    local current_branch=$(git branch --show-current 2>/dev/null)
+    local current_commit=$(git rev-parse HEAD 2>/dev/null)
+    echo "$current_branch|$current_commit"
+}
+
+# Function to truncate text
+truncate_text() {
+    local text="$1"
+    local max_length="$2"
+    if [ ${#text} -gt $max_length ]; then
+        echo "${text:0:$((max_length-3))}..."
+    else
+        echo "$text"
+    fi
+}
+
+# Function to draw header
+draw_header() {
+    local current_info=$1
+    IFS='|' read -r current_branch current_commit <<< "$current_info"
+    
+    clear_screen
+    
+    echo -e "${BOLD}${MAGENTA}╭─────────────────────────────────────────────────────────────────────────────╮${NC}"
+    echo -e "${BOLD}${MAGENTA}│${NC}  ${BOLD}${CYAN}🔄 Interactive Git Restore Tool${NC}                                      ${BOLD}${MAGENTA}│${NC}"
+    echo -e "${BOLD}${MAGENTA}│${NC}  ${DIM}Navigate with ↑↓ arrows, Enter to select, q to quit${NC}                  ${BOLD}${MAGENTA}│${NC}"
+    echo -e "${BOLD}${MAGENTA}╰─────────────────────────────────────────────────────────────────────────────╯${NC}"
+    echo ""
+    
+    echo -e "  ${BRANCH_MARK} ${BOLD}Branch:${NC} ${CYAN}${current_branch:-'(detached HEAD)'}${NC}"
+    echo -e "  ${COMMIT_MARK} ${BOLD}Current:${NC} ${GRAY}${current_commit:0:7}${NC}"
+    echo ""
+    echo -e "${BOLD}${WHITE}Recent Commits:${NC}"
+    echo ""
+}
+
+# Function to draw commit list
+draw_commits() {
+    local commits="$1"
+    local selected="$2"
+    local current_commit="$3"
+    local line_num=9
+    
+    local i=0
+    while IFS='|' read -r full_hash short_hash message date author; do
+        local relative_time=$(get_relative_time "$full_hash")
+        local truncated_msg=$(truncate_text "$message" 50)
+        local truncated_author=$(truncate_text "$author" 15)
+        
+        move_cursor $line_num 1
+        
+        # Determine styling
+        local prefix="  "
+        local commit_style=""
+        local message_style=""
+        local is_current=false
+        local is_fresh=false
+        
+        # Check if this is the current commit
+        if [ "$full_hash" = "$current_commit" ]; then
+            is_current=true
+        fi
+        
+        # Check if this is the most recent (fresh) commit
+        if [ $i -eq 0 ]; then
+            is_fresh=true
+        fi
+        
+        # Set selection styling
+        if [ $i -eq $selected ]; then
+            prefix="${BOLD}${CYAN}${ARROW}${NC} "
+            commit_style="${BOLD}${WHITE}"
+            message_style="${BOLD}${YELLOW}"
+        else
+            prefix="  "
+            commit_style="${GRAY}"
+            message_style="${NC}"
+        fi
+        
+        # Build the line
+        local line=""
+        
+        # Add markers
+        if $is_current && $is_fresh; then
+            line="${prefix}${CURRENT_MARK}${FRESH_MARK}"
+        elif $is_current; then
+            line="${prefix}${CURRENT_MARK} "
+        elif $is_fresh; then
+            line="${prefix}${FRESH_MARK} "
+        else
+            line="${prefix}  "
+        fi
+        
+        # Add commit info
+        line="${line} ${commit_style}${short_hash}${NC}"
+        line="${line} ${message_style}${truncated_msg}${NC}"
+        
+        # Add metadata
+        line="${line} ${DIM}${TIME_MARK}${relative_time} by ${truncated_author}${NC}"
+        
+        # Clear line and print
+        printf '\033[K'
+        echo -e "$line"
+        
+        ((i++))
+        ((line_num++))
+    done <<< "$commits"
+    
+    # Clear remaining lines
+    for ((j=line_num; j<=25; j++)); do
+        move_cursor $j 1
+        printf '\033[K'
+    done
+}
+
+# Function to show commit details
 show_commit_details() {
     local commit_hash=$1
-    local save_num=$2
-    local description=$3
+    local short_hash=$2
+    local message=$3
     local date=$4
+    local author=$5
     
-    echo -e "\n${BOLD}${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${BOLD}📌 SAVE #${save_num}${NC} - ${description}"
-    echo -e "${DIM}Commit: ${commit_hash} | Date: ${date}${NC}"
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+    clear_screen
     
-    # Show commit message body if exists
+    echo -e "${BOLD}${CYAN}╭─────────────────────────────────────────────────────────────────────────────╮${NC}"
+    echo -e "${BOLD}${CYAN}│${NC}  ${BOLD}${WHITE}📋 Commit Details${NC}                                                    ${BOLD}${CYAN}│${NC}"
+    echo -e "${BOLD}${CYAN}╰─────────────────────────────────────────────────────────────────────────────╯${NC}"
+    echo ""
+    
+    echo -e "  ${BOLD}Hash:${NC}    ${YELLOW}${short_hash}${NC} (${GRAY}${commit_hash}${NC})"
+    echo -e "  ${BOLD}Message:${NC} ${WHITE}${message}${NC}"
+    echo -e "  ${BOLD}Date:${NC}    ${CYAN}${date}${NC}"
+    echo -e "  ${BOLD}Author:${NC}  ${GREEN}${author}${NC}"
+    echo ""
+    
+    # Show commit body if exists
     local body=$(git log -1 --format="%b" "$commit_hash" 2>/dev/null | sed '/^$/d')
     if [ -n "$body" ]; then
-        echo -e "${BOLD}📝 Commit details:${NC}"
-        echo "$body" | sed 's/^/   /'
+        echo -e "${BOLD}Extended message:${NC}"
+        echo "$body" | sed 's/^/  /'
         echo ""
     fi
     
     # Show file changes
-    echo -e "${BOLD}📄 Files changed:${NC}"
-    git show --stat --format="" "$commit_hash" 2>/dev/null | head -n -1 | sed 's/^/   /'
+    echo -e "${BOLD}Files changed:${NC}"
+    git show --stat --format="" "$commit_hash" 2>/dev/null | head -n -1 | sed 's/^/  /'
+    echo ""
     
     # Show summary
     local summary=$(git show --stat --format="" "$commit_hash" 2>/dev/null | tail -1)
-    echo -e "\n${BOLD}📊 Summary:${NC} $summary"
+    echo -e "${BOLD}Summary:${NC} $summary"
+    echo ""
     
-    # Show diff preview (first 20 lines)
-    echo -e "\n${BOLD}🔍 Change preview:${NC}"
-    git show --format="" --color=always "$commit_hash" 2>/dev/null | head -20 | sed 's/^/   /'
-    echo -e "   ${DIM}... (preview limited to 20 lines)${NC}"
+    echo -e "${BOLD}${YELLOW}Do you want to restore to this commit? [y/N]${NC}"
+    read -p "$(echo -e ${CYAN}Choice: ${NC})" choice
+    
+    if [[ $choice =~ ^[Yy]$ ]]; then
+        perform_restore "$commit_hash" "$short_hash" "$message"
+    fi
 }
 
 # Function to handle uncommitted changes
@@ -70,10 +242,9 @@ handle_uncommitted_changes() {
         echo -e "${BOLD}1)${NC} Stash changes and continue"
         echo -e "${BOLD}2)${NC} Discard changes and continue"
         echo -e "${BOLD}3)${NC} Cancel restore"
-        echo -e "${BOLD}4)${NC} View uncommitted changes"
         
         while true; do
-            read -p "$(echo -e ${CYAN}Choice [1-4]: ${NC})" choice
+            read -p "$(echo -e ${CYAN}Choice [1-3]: ${NC})" choice
             
             case $choice in
                 1)
@@ -91,24 +262,14 @@ handle_uncommitted_changes() {
                         git clean -fd
                         echo -e "${GREEN}✓ Changes discarded${NC}"
                         return 0
-                    else
-                        echo "Continuing to menu..."
-                        continue
                     fi
                     ;;
                 3)
                     echo -e "${YELLOW}Restore cancelled${NC}"
                     return 1
                     ;;
-                4)
-                    echo -e "\n${BOLD}Uncommitted changes:${NC}"
-                    git status --short
-                    echo -e "\n${BOLD}Diff preview:${NC}"
-                    git diff --color=always | head -30
-                    echo -e "${DIM}... (preview limited to 30 lines)${NC}\n"
-                    ;;
                 *)
-                    echo -e "${RED}Invalid choice. Please select 1-4${NC}"
+                    echo -e "${RED}Invalid choice. Please select 1-3${NC}"
                     ;;
             esac
         done
@@ -119,18 +280,22 @@ handle_uncommitted_changes() {
 # Function to perform restore
 perform_restore() {
     local commit_hash=$1
-    local save_num=$2
-    local description=$3
+    local short_hash=$2
+    local message=$3
     
-    echo -e "\n${BLUE}Restoring to SAVE #${save_num}...${NC}"
+    echo -e "\n${BLUE}Restoring to commit ${short_hash}...${NC}"
+    
+    # Handle uncommitted changes
+    if ! handle_uncommitted_changes; then
+        return 1
+    fi
     
     if git checkout "$commit_hash" 2>/dev/null; then
-        echo -e "\n${GREEN}✅ Successfully restored to SAVE #${save_num}${NC}"
-        echo -e "${GREEN}📝 ${description}${NC}"
-        echo -e "\nCurrent position: ${BOLD}$(git rev-parse --short HEAD)${NC}"
+        echo -e "\n${GREEN}✅ Successfully restored to commit ${short_hash}${NC}"
+        echo -e "${GREEN}📝 ${message}${NC}"
         echo -e "\n${YELLOW}Note:${NC} You are now in 'detached HEAD' state."
         echo -e "To create a new branch: ${CYAN}git checkout -b <branch-name>${NC}"
-        echo -e "To return to main/master: ${CYAN}git checkout main${NC} (or master)"
+        echo -e "To return to your branch: ${CYAN}git checkout <branch-name>${NC}"
     else
         echo -e "${RED}Error: Failed to restore${NC}"
         return 1
@@ -141,88 +306,76 @@ perform_restore() {
 main() {
     check_git_repo
     
-    # Get current branch and commit
-    local current_branch=$(git branch --show-current 2>/dev/null)
-    local current_commit=$(git rev-parse --short HEAD 2>/dev/null)
+    # Get commit data
+    local commits=$(get_commits)
+    local current_info=$(get_current_info)
+    IFS='|' read -r current_branch current_commit <<< "$current_info"
     
-    echo -e "${BOLD}${MAGENTA}🔄 Claude Restore Tool${NC}"
-    echo -e "${DIM}Interactive Git Save Point Manager${NC}\n"
-    
-    echo -e "Current branch: ${CYAN}${current_branch:-'(detached HEAD)'}${NC}"
-    echo -e "Current commit: ${CYAN}${current_commit}${NC}\n"
-    
-    # Get all saves
-    local saves=$(get_saves)
-    
-    if [ -z "$saves" ]; then
-        echo -e "${YELLOW}No save points found.${NC}"
-        echo -e "Create saves with: ${CYAN}git commit -m \"[SAVE #1] Description\"${NC}"
+    if [ -z "$commits" ]; then
+        echo -e "${YELLOW}No commits found.${NC}"
         exit 0
     fi
     
-    # Build menu
-    echo -e "${BOLD}Available Save Points:${NC}\n"
+    # Convert commits to array
+    local commit_array=()
+    while IFS='|' read -r line; do
+        commit_array+=("$line")
+    done <<< "$commits"
     
-    declare -A save_map
-    local i=1
+    local selected=0
+    local total=${#commit_array[@]}
     
-    while IFS='|' read -r short_hash message date full_hash; do
-        local save_num=$(echo "$message" | grep -o '\[SAVE #[0-9]\+\]' | grep -o '[0-9]\+')
-        local description=$(echo "$message" | sed 's/\[SAVE #[0-9]\+\] //')
-        
-        # Store in map
-        save_map[$i]="$full_hash|$save_num|$description|$date"
-        
-        # Display menu item
-        echo -n -e "${BOLD}${i})${NC} SAVE #${save_num} - ${description}"
-        
-        # Mark current commit
-        if [ "$short_hash" = "$current_commit" ]; then
-            echo -e " ${GREEN}← CURRENT${NC}"
-        else
-            echo ""
-        fi
-        
-        echo -e "   ${DIM}${date} | ${short_hash}${NC}"
-        
-        ((i++))
-    done <<< "$saves"
+    # Hide cursor and disable echo
+    hide_cursor
+    stty -echo
     
-    echo -e "\n${BOLD}0)${NC} Exit"
+    # Initial draw
+    draw_header "$current_info"
+    draw_commits "$commits" "$selected" "$current_commit"
     
-    # Get user choice
+    # Main loop
     while true; do
-        echo ""
-        read -p "$(echo -e ${CYAN}Select save point to view [0-$((i-1))]: ${NC})" choice
+        # Read single character
+        read -rsn1 key
         
-        if [[ "$choice" == "0" ]]; then
-            echo -e "${YELLOW}Exiting...${NC}"
-            exit 0
-        elif [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -lt "$i" ]; then
-            # Valid choice
-            IFS='|' read -r commit_hash save_num description date <<< "${save_map[$choice]}"
-            
-            # Show details
-            show_commit_details "$commit_hash" "$save_num" "$description" "$date"
-            
-            # Confirm restore
-            echo -e "\n${BOLD}Do you want to restore to this save point?${NC}"
-            echo -e "${YELLOW}Warning: This will change your working directory${NC}"
-            read -p "$(echo -e ${CYAN}Restore? [y/N]: ${NC})" confirm
-            
-            if [[ $confirm =~ ^[Yy]$ ]]; then
-                # Handle uncommitted changes
-                if handle_uncommitted_changes; then
-                    perform_restore "$commit_hash" "$save_num" "$description"
-                    exit 0
-                fi
-            else
-                echo -e "\n${YELLOW}Restore cancelled. Returning to menu...${NC}"
-            fi
-        else
-            echo -e "${RED}Invalid choice. Please select 0-$((i-1))${NC}"
-        fi
+        case $key in
+            $'\x1b')  # ESC sequence
+                read -rsn2 -t 1 rest
+                case $rest in
+                    '[A')  # Up arrow
+                        if [ $selected -gt 0 ]; then
+                            ((selected--))
+                            draw_commits "$commits" "$selected" "$current_commit"
+                        fi
+                        ;;
+                    '[B')  # Down arrow
+                        if [ $selected -lt $((total-1)) ]; then
+                            ((selected++))
+                            draw_commits "$commits" "$selected" "$current_commit"
+                        fi
+                        ;;
+                esac
+                ;;
+            '')  # Enter key
+                # Get selected commit data
+                local selected_commit="${commit_array[$selected]}"
+                IFS='|' read -r full_hash short_hash message date author <<< "$selected_commit"
+                
+                show_cursor
+                stty echo
+                show_commit_details "$full_hash" "$short_hash" "$message" "$date" "$author"
+                exit 0
+                ;;
+            'q'|'Q')  # Quit
+                break
+                ;;
+        esac
     done
+    
+    # Cleanup
+    show_cursor
+    stty echo
+    echo -e "\n${YELLOW}Exiting...${NC}"
 }
 
 # Run main function
