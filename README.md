@@ -2,6 +2,8 @@
 
 Interactive Git save point browser that lets you navigate and restore commits without using tokens in AI coding assistants.
 
+![Screenshot 2025-06-19 at 8 16 05 PM](https://github.com/user-attachments/assets/4da979bd-a8a5-4403-94de-b05924922649)
+
 ## Why this exists
 
 When using AI coding tools like Claude Code, simple Git operations consume tokens and cost money. This tool handles Git navigation locally, saving tokens for actual coding tasks.
