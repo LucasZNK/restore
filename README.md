@@ -15,6 +15,13 @@ When using AI coding tools like Claude Code, simple Git operations consume token
 
 ## Installation
 
+### Option 1: Homebrew (Recommended)
+```bash
+brew tap LucasZNK/restore
+brew install restore
+```
+
+### Option 2: Manual Installation
 ```bash
 # Make executable
 chmod +x restore
