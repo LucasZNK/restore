@@ -2,6 +2,7 @@
 
 # Interactive Git Restore Tool
 # Description: Interactive arrow-navigable git commit browser and restore tool
+# Version: 1.1.1
 
 # Colors and formatting
 RED='\033[0;31m'
@@ -43,8 +44,11 @@ move_cursor() {
 
 # Cleanup function
 cleanup() {
-    show_cursor
-    stty echo
+    # Only restore terminal state if we're in interactive mode
+    if [ -t 0 ]; then
+        show_cursor
+        stty echo 2>/dev/null
+    fi
     exit 0
 }
 
@@ -489,6 +493,26 @@ perform_restore() {
 
 # Main interactive function
 main() {
+    # Check for version flag
+    if [[ "$1" == "--version" ]] || [[ "$1" == "-v" ]]; then
+        echo "restore version 1.1.1"
+        exit 0
+    fi
+    
+    # Check for help flag
+    if [[ "$1" == "--help" ]] || [[ "$1" == "-h" ]]; then
+        echo "restore - Interactive Git save point browser"
+        echo ""
+        echo "Usage: restore [options]"
+        echo ""
+        echo "Options:"
+        echo "  -v, --version    Show version information"
+        echo "  -h, --help       Show this help message"
+        echo ""
+        echo "Run 'restore' without options to start the interactive browser"
+        exit 0
+    fi
+    
     check_git_repo
     
     # Get commit data
@@ -650,5 +674,5 @@ main() {
     echo -e "\n${YELLOW}Exiting...${NC}"
 }
 
-# Run main function
-main
+# Run main function with all arguments
+main "$@"
