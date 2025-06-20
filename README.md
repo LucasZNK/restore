@@ -20,7 +20,15 @@ When using AI coding tools like Claude Code, simple Git operations consume token
 
 ## How it works
 
-The tool shows all recent commits and lets you navigate and restore to any of them. Simple interactive Git browsing without command-line complexity.
+The tool uses a safe approach with temporary branches:
+
+1. **Browse commits**: Navigate through your Git history with arrow keys
+2. **Preview safely**: When you select a commit, see all details before confirming
+3. **Temporary restore**: Creates a temporary branch to explore the selected commit
+4. **Your work is safe**: Original branch remains untouched until you explicitly apply changes
+5. **Clear choices**: After restoring, choose to apply changes permanently or undo
+
+This approach ensures you never accidentally lose work or modify your branch without explicit confirmation.
 
 ## Installation
 
@@ -92,9 +100,15 @@ Recent Commits:
 
 ### 3. Navigation
 
+**Browse Mode:**
 - **↑/↓ arrows**: Navigate between commits
 - **Enter**: Select and preview a commit
 - **q**: Quit the application
+
+**Temporary Restore Mode:**
+- **a**: Apply - Make changes permanent to your original branch
+- **u**: Undo - Return to original branch without changes
+- **q**: Quit - Exit tool (keeps temporary branch)
 
 ### 4. Preview and restore
 
@@ -102,10 +116,20 @@ When you select a commit, you'll see:
 
 - **Commit details**: Hash, message, date, author
 - **Changed files**: List of modified files with stats
-- **Diff preview**: First 20 lines of changes
 - **Restore confirmation**: Option to restore or cancel
 
-### 5. Handling uncommitted changes
+### 5. Understanding temporary branches
+
+When you restore a commit:
+1. **Temporary branch created**: `restore-temp-[timestamp]`
+2. **Safe exploration**: You can test the code at that point in time
+3. **Original branch unchanged**: Your main/master branch stays exactly where it was
+4. **Clear visual indicators**: UI shows you're in a temporary state
+5. **Simple choices**: Apply (a) to keep changes, or Undo (u) to go back
+
+This prevents accidental commits and gives you full control over your Git history.
+
+### 6. Handling uncommitted changes
 
 If you have uncommitted changes when trying to restore, the tool will ask:
 
@@ -116,20 +140,28 @@ If you have uncommitted changes when trying to restore, the tool will ask:
 ## Example Workflow
 
 ```bash
-# 1. Make a commit
-git add .
-git commit -m "Working login form"
+# 1. You're on 'main' branch with some commits
+git log --oneline
+# def4567 Added validation
+# abc1234 Working login form
+# xyz9876 Initial setup
 
-# 2. Continue coding, make changes...
-# 3. Make another commit
-git add .
-git commit -m "Added validation"
-
-# 4. Something breaks, need to go back
+# 2. Something breaks, need to check older code
 restore
 
-# 5. Navigate to "Working login form", preview changes, restore
-# 6. You're back to the working login form state
+# 3. Navigate to "Working login form", press Enter
+# See commit details, confirm with 'y'
+
+# 4. Now you're in temporary state:
+# - Branch: restore-temp-1234567890
+# - You can test if the old code works
+# - Your 'main' branch is still at "Added validation"
+
+# 5. Two options:
+# Press 'a' - Move 'main' to this commit (lose "Added validation")
+# Press 'u' - Return to 'main' with "Added validation" intact
+
+# 6. The tool clearly shows your status throughout
 ```
 
 
