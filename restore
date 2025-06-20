@@ -60,7 +60,9 @@ check_git_repo() {
 
 # Function to get commit data
 get_commits() {
-    git log --oneline --format="%H|%h|%s|%ad|%an" --date=format:"%Y-%m-%d %H:%M" -15 2>/dev/null
+    # Simply get the last 20 commits from the current HEAD
+    # This will show the linear history from wherever we are
+    git log --oneline --format="%H|%h|%s|%ad|%an" --date=format:"%Y-%m-%d %H:%M" -20 2>/dev/null
 }
 
 # Function to get relative time
@@ -94,16 +96,55 @@ draw_header() {
     
     clear_screen
     
+    # Determine current state
+    local is_restored=false
+    local original_branch=""
+    local restored_commit_hash=""
+    local restored_commit_msg=""
+    
+    if [ -f ".git/last_restore_info" ]; then
+        is_restored=true
+        local restore_info=$(cat .git/last_restore_info 2>/dev/null)
+        original_branch=$(echo "$restore_info" | cut -d'|' -f1)
+        restored_commit_hash=$(echo "$restore_info" | cut -d'|' -f2)
+        # Get commit message for restored commit
+        restored_commit_msg=$(git log -1 --pretty=format:"%s" "$restored_commit_hash" 2>/dev/null)
+    fi
+    
+    # Header box
     echo -e "${BOLD}${MAGENTA}╭─────────────────────────────────────────────────────────────────────────────╮${NC}"
-    echo -e "${BOLD}${MAGENTA}│${NC}  ${BOLD}${CYAN}🔄 Interactive Git Restore Tool${NC}                                      ${BOLD}${MAGENTA}│${NC}"
-    echo -e "${BOLD}${MAGENTA}│${NC}  ${DIM}Navigate with ↑↓ arrows, Enter to select, q to quit${NC}                  ${BOLD}${MAGENTA}│${NC}"
+    
+    if [ "$is_restored" = true ]; then
+        # State: Viewing a restored commit
+        echo -e "${BOLD}${MAGENTA}│${NC}  ${YELLOW}⚠️  ${BOLD}${WHITE}TEMPORARY RESTORE MODE - You're exploring a past commit${NC}        ${BOLD}${MAGENTA}│${NC}"
+        echo -e "${BOLD}${MAGENTA}│${NC}  ${GREEN}[a]${NC} Apply this commit to '${original_branch}' ${YELLOW}[u]${NC} Undo and return ${GRAY}[q]${NC} Quit     ${BOLD}${MAGENTA}│${NC}"
+    else
+        # State: Browsing commits
+        echo -e "${BOLD}${MAGENTA}│${NC}  ${CYAN}📋 ${BOLD}${WHITE}COMMIT BROWSER - Navigate through git history${NC}                ${BOLD}${MAGENTA}│${NC}"
+        echo -e "${BOLD}${MAGENTA}│${NC}  ${WHITE}↑↓${NC} Navigate ${GREEN}[Enter]${NC} Preview & Restore ${GRAY}[q]${NC} Quit                      ${BOLD}${MAGENTA}│${NC}"
+    fi
+    
     echo -e "${BOLD}${MAGENTA}╰─────────────────────────────────────────────────────────────────────────────╯${NC}"
     echo ""
     
-    echo -e "  ${BRANCH_MARK} ${BOLD}Branch:${NC} ${CYAN}${current_branch:-'(detached HEAD)'}${NC}"
-    echo -e "  ${COMMIT_MARK} ${BOLD}Current:${NC} ${GRAY}${current_commit:0:7}${NC}"
-    echo ""
-    echo -e "${BOLD}${WHITE}Recent Commits:${NC}"
+    # Show current state info
+    if [ "$is_restored" = true ]; then
+        echo -e "${BOLD}${YELLOW}  ⚠️  TEMPORARY STATE${NC}"
+        echo -e "  ${WHITE}You restored to:${NC} ${CYAN}${restored_commit_msg}${NC}"
+        echo -e "  ${WHITE}Original branch:${NC} ${GREEN}${original_branch}${NC} ${DIM}(unchanged)${NC}"
+        echo ""
+        echo -e "  ${WHITE}Choose an action:${NC}"
+        echo -e "  ${GREEN}[a]${NC} Apply - Make '${original_branch}' point to this commit"
+        echo -e "  ${YELLOW}[u]${NC} Undo  - Go back to '${original_branch}'"
+        echo -e "  ${GRAY}[q]${NC} Quit  - Exit tool"
+        echo ""
+        echo -e "  ${DIM}Navigation disabled in temporary state${NC}"
+    else
+        echo -e "  ${WHITE}Branch:${NC} ${GREEN}${current_branch}${NC}"
+        echo -e "  ${WHITE}HEAD:${NC} ${GRAY}${current_commit:0:7}${NC}"
+        echo ""
+        echo -e "${BOLD}${WHITE}Commits:${NC}"
+    fi
     echo ""
 }
 
@@ -126,21 +167,18 @@ draw_commits() {
         local prefix="  "
         local commit_style=""
         local message_style=""
-        local is_current=false
-        local is_fresh=false
         
-        # Check if this is the current commit
-        if [ "$full_hash" = "$current_commit" ]; then
-            is_current=true
+        # Check if we're in restored state
+        local is_restored=false
+        local restored_commit=""
+        if [ -f ".git/last_restore_info" ]; then
+            is_restored=true
+            local restore_info=$(cat .git/last_restore_info 2>/dev/null)
+            restored_commit=$(echo "$restore_info" | cut -d'|' -f2)
         fi
         
-        # Check if this is the most recent (fresh) commit
-        if [ $i -eq 0 ]; then
-            is_fresh=true
-        fi
-        
-        # Set selection styling
-        if [ $i -eq $selected ]; then
+        # Set selection styling - only show selection arrow if NOT in restored state
+        if [ "$is_restored" = false ] && [ $i -eq $selected ]; then
             prefix="${BOLD}${CYAN}${ARROW}${NC} "
             commit_style="${BOLD}${WHITE}"
             message_style="${BOLD}${YELLOW}"
@@ -153,13 +191,12 @@ draw_commits() {
         # Build the line
         local line=""
         
-        # Add markers
-        if $is_current && $is_fresh; then
-            line="${prefix}${CURRENT_MARK}${FRESH_MARK}"
-        elif $is_current; then
-            line="${prefix}${CURRENT_MARK} "
-        elif $is_fresh; then
-            line="${prefix}${FRESH_MARK} "
+        # Add markers based on state
+        if [ "$is_restored" = true ] && [ "$full_hash" = "$restored_commit" ]; then
+            # Mark the currently restored commit with a clear indicator
+            line="${prefix}${GREEN}●${NC} "
+            commit_style="${GREEN}${BOLD}"
+            message_style="${GREEN}"
         else
             line="${prefix}  "
         fi
@@ -169,7 +206,7 @@ draw_commits() {
         line="${line} ${message_style}${truncated_msg}${NC}"
         
         # Add metadata
-        line="${line} ${DIM}${TIME_MARK}${relative_time} by ${truncated_author}${NC}"
+        line="${line} ${DIM}${relative_time} • ${truncated_author}${NC}"
         
         # Clear line and print
         printf '\033[K'
@@ -217,19 +254,29 @@ show_commit_details() {
     
     # Show file changes
     echo -e "${BOLD}Files changed:${NC}"
-    git show --stat --format="" "$commit_hash" 2>/dev/null | head -n -1 | sed 's/^/  /'
+    # Get all lines except the last one (summary line)
+    local file_changes=$(git show --stat --format="" "$commit_hash" 2>/dev/null)
+    local line_count=$(echo "$file_changes" | wc -l)
+    if [ $line_count -gt 1 ]; then
+        echo "$file_changes" | sed '$d' | sed 's/^/  /'
+    fi
     echo ""
     
     # Show summary
     local summary=$(git show --stat --format="" "$commit_hash" 2>/dev/null | tail -1)
-    echo -e "${BOLD}Summary:${NC} $summary"
-    echo ""
+    if [ -n "$summary" ]; then
+        echo -e "${BOLD}Summary:${NC} $summary"
+        echo ""
+    fi
     
     echo -e "${BOLD}${YELLOW}Do you want to restore to this commit? [y/N]${NC}"
     read -p "$(echo -e ${CYAN}Choice: ${NC})" choice
     
     if [[ $choice =~ ^[Yy]$ ]]; then
         perform_restore "$commit_hash" "$short_hash" "$message"
+        return 0  # Indicate restore was performed
+    else
+        return 1  # Indicate restore was cancelled
     fi
 }
 
@@ -276,27 +323,166 @@ handle_uncommitted_changes() {
     return 0
 }
 
+# Function to generate temporary branch name
+generate_temp_branch_name() {
+    echo "restore-temp-$(date +%s)"
+}
+
+# Function to clean up old temporary branches
+cleanup_temp_branches() {
+    local temp_branches=$(git branch | grep -E '^\s*restore-temp-' | sed 's/^[ *]*//')
+    if [ -n "$temp_branches" ]; then
+        echo -e "\n${YELLOW}Found old temporary restore branches:${NC}"
+        echo "$temp_branches" | sed 's/^/  /'
+        echo -e "\n${BOLD}Clean up old temporary branches? [y/N]${NC}"
+        read -p "$(echo -e ${CYAN}Choice: ${NC})" choice
+        if [[ $choice =~ ^[Yy]$ ]]; then
+            echo "$temp_branches" | while read branch; do
+                git branch -D "$branch" 2>/dev/null && echo -e "${GREEN}✓ Deleted $branch${NC}"
+            done
+        fi
+    fi
+}
+
+# Function to get original branch before restore
+get_original_branch() {
+    local current_branch=$(git branch --show-current 2>/dev/null)
+    if [ -n "$current_branch" ]; then
+        echo "$current_branch"
+    else
+        # If in detached HEAD, try to find the original branch
+        local original_branch=$(git reflog --format='%gd %gs' | grep -E 'checkout: moving from' | head -1 | sed 's/.*checkout: moving from \([^ ]*\).*/\1/')
+        echo "${original_branch:-master}"
+    fi
+}
+
+# Function to undo last restore
+undo_last_restore() {
+    if [ ! -f ".git/last_restore_info" ]; then
+        echo -e "${YELLOW}No previous restore to undo${NC}"
+        return 1
+    fi
+    
+    local restore_info=$(cat .git/last_restore_info)
+    IFS='|' read -r original_branch commit_hash temp_branch <<< "$restore_info"
+    
+    echo -e "\n${BLUE}Returning to original branch...${NC}"
+    
+    if git checkout "$original_branch" 2>/dev/null; then
+        echo -e "${GREEN}✅ Successfully returned to '${original_branch}'${NC}"
+        
+        # Clean up temporary branch
+        if [ -n "$temp_branch" ] && git branch | grep -q "$temp_branch"; then
+            git branch -D "$temp_branch" 2>/dev/null
+        fi
+        
+        # Remove restore info
+        rm -f .git/last_restore_info
+        
+        return 0
+    else
+        echo -e "${RED}Error: Failed to return to branch ${original_branch}${NC}"
+        return 1
+    fi
+}
+
+# Function to adopt current commit as new HEAD of original branch
+adopt_current_commit() {
+    if [ ! -f ".git/last_restore_info" ]; then
+        echo -e "${RED}Error: No restore info found${NC}"
+        return 1
+    fi
+    
+    local restore_info=$(cat .git/last_restore_info 2>/dev/null)
+    local original_branch=$(echo "$restore_info" | cut -d'|' -f1)
+    local current_commit=$(echo "$restore_info" | cut -d'|' -f2)
+    local temp_branch=$(echo "$restore_info" | cut -d'|' -f3)
+    
+    # Get commit message for clarity
+    local commit_msg=$(git log -1 --pretty=format:"%s" "$current_commit" 2>/dev/null)
+    
+    echo -e "${YELLOW}⚠️  ${BOLD}Make this commit permanent?${NC}"
+    echo ""
+    echo -e "${WHITE}This will move '${CYAN}${original_branch}${NC}' to:${NC}"
+    echo -e "  ${GREEN}→${NC} ${CYAN}${commit_msg}${NC}"
+    echo ""
+    echo -e "${RED}WARNING:${NC} Any commits after this point will be lost"
+    echo ""
+    read -p "Continue? (yes/no): " -r confirm
+    
+    if [[ $confirm != "yes" ]]; then
+        echo -e "${GRAY}Operation cancelled${NC}"
+        return 0
+    fi
+    
+    echo -e "${YELLOW}Applying changes...${NC}"
+    
+    # Switch to original branch
+    if git checkout "$original_branch" 2>/dev/null; then
+        # Reset to the desired commit (hard reset)
+        if git reset --hard "$current_commit" 2>/dev/null; then
+            echo -e "${GREEN}✓ Done! Branch '${original_branch}' is now at: ${commit_msg}${NC}"
+            
+            # Clean up temp branch
+            if [ -n "$temp_branch" ] && git branch | grep -q "$temp_branch"; then
+                git branch -D "$temp_branch" 2>/dev/null
+            fi
+            
+            # Remove restore info
+            rm -f .git/last_restore_info
+            
+            echo -e "${GREEN}✓ Successfully applied${NC}"
+            return 0
+        else
+            echo -e "${RED}Error: Failed to apply changes${NC}"
+            return 1
+        fi
+    else
+        echo -e "${RED}Error: Failed to switch to branch ${original_branch}${NC}"
+        return 1
+    fi
+}
+
 # Function to perform restore
 perform_restore() {
     local commit_hash=$1
     local short_hash=$2
     local message=$3
     
-    echo -e "\n${BLUE}Restoring to commit ${short_hash}...${NC}"
+    echo -e "\n${BLUE}Restoring...${NC}"
     
     # Handle uncommitted changes
     if ! handle_uncommitted_changes; then
         return 1
     fi
     
-    if git checkout "$commit_hash" 2>/dev/null; then
-        echo -e "\n${GREEN}✅ Successfully restored to commit ${short_hash}${NC}"
-        echo -e "${GREEN}📝 ${message}${NC}"
-        echo -e "\n${YELLOW}Note:${NC} You are now in 'detached HEAD' state."
-        echo -e "To create a new branch: ${CYAN}git checkout -b <branch-name>${NC}"
-        echo -e "To return to your branch: ${CYAN}git checkout <branch-name>${NC}"
+    # Get original branch info
+    local original_branch=$(get_original_branch)
+    local temp_branch=$(generate_temp_branch_name)
+    
+    # Create and checkout temporary branch
+    if git checkout -b "$temp_branch" "$commit_hash" 2>/dev/null; then
+        clear_screen
+        echo -e "${GREEN}✅ ${BOLD}Restore successful!${NC}"
+        echo ""
+        echo -e "${WHITE}You're now viewing:${NC}"
+        echo -e "  ${CYAN}${message}${NC}"
+        echo ""
+        echo -e "${WHITE}You can now:${NC}"
+        echo -e "  • Explore the code at this point in time"
+        echo -e "  • Run ${CYAN}restore${NC} again to browse more commits"
+        echo -e "  • Press ${GREEN}'a'${NC} in restore to make this permanent"
+        echo -e "  • Press ${YELLOW}'u'${NC} in restore to return without changes"
+        echo ""
+        
+        # Offer cleanup of old temp branches
+        cleanup_temp_branches
+        
+        # Save restore info for potential undo
+        echo "${original_branch}|${commit_hash}|${temp_branch}" > .git/last_restore_info 2>/dev/null
+        
     else
-        echo -e "${RED}Error: Failed to restore${NC}"
+        echo -e "${RED}Error: Failed to restore commit${NC}"
         return 1
     fi
 }
@@ -337,33 +523,120 @@ main() {
         # Read single character
         read -rsn1 key
         
+        # Check if we're in restored state
+        local in_restored_state=false
+        if [ -f ".git/last_restore_info" ]; then
+            in_restored_state=true
+        fi
+        
         case $key in
             $'\x1b')  # ESC sequence
-                read -rsn2 -t 1 rest
-                case $rest in
-                    '[A')  # Up arrow
-                        if [ $selected -gt 0 ]; then
-                            ((selected--))
-                            draw_commits "$commits" "$selected" "$current_commit"
-                        fi
-                        ;;
-                    '[B')  # Down arrow
-                        if [ $selected -lt $((total-1)) ]; then
-                            ((selected++))
-                            draw_commits "$commits" "$selected" "$current_commit"
-                        fi
-                        ;;
-                esac
+                if [ "$in_restored_state" = false ]; then
+                    read -rsn2 -t 1 rest
+                    case $rest in
+                        '[A')  # Up arrow
+                            if [ $selected -gt 0 ]; then
+                                ((selected--))
+                                draw_commits "$commits" "$selected" "$current_commit"
+                            fi
+                            ;;
+                        '[B')  # Down arrow
+                            if [ $selected -lt $((total-1)) ]; then
+                                ((selected++))
+                                draw_commits "$commits" "$selected" "$current_commit"
+                            fi
+                            ;;
+                    esac
+                fi
                 ;;
             '')  # Enter key
-                # Get selected commit data
-                local selected_commit="${commit_array[$selected]}"
-                IFS='|' read -r full_hash short_hash message date author <<< "$selected_commit"
-                
+                if [ "$in_restored_state" = false ]; then
+                    # Get selected commit data
+                    local selected_commit="${commit_array[$selected]}"
+                    IFS='|' read -r full_hash short_hash message date author <<< "$selected_commit"
+                    
+                    show_cursor
+                    stty echo
+                    show_commit_details "$full_hash" "$short_hash" "$message" "$date" "$author"
+                    
+                    if [ $? -eq 0 ]; then
+                        # Restore was performed, refresh everything
+                        echo -e "\n${CYAN}Entering temporary restore mode...${NC}"
+                        sleep 2
+                        
+                        # Refresh data after restore
+                        commits=$(get_commits)
+                        current_info=$(get_current_info)
+                        commit_array=()
+                        while IFS='|' read -r line; do
+                            commit_array+=("$line")
+                        done <<< "$commits"
+                        total=${#commit_array[@]}
+                        selected=0
+                    fi
+                    
+                    # Re-hide cursor and disable echo
+                    hide_cursor
+                    stty -echo
+                    
+                    # Redraw interface
+                    draw_header "$current_info"
+                    draw_commits "$commits" "$selected" "$current_commit"
+                fi
+                ;;
+            'a'|'A')  # Adopt current commit
+                if [ -f ".git/last_restore_info" ]; then
+                    show_cursor
+                    stty echo
+                    adopt_current_commit
+                    if [ $? -eq 0 ]; then
+                        # After successful adoption, refresh the state and continue
+                        echo -e "\n${CYAN}Refreshing commit list...${NC}"
+                        sleep 1
+                        # Get updated commit data and current info
+                        commits=$(get_commits)
+                        current_info=$(get_current_info)
+                        # Convert commits to array again
+                        commit_array=()
+                        while IFS='|' read -r line; do
+                            commit_array+=("$line")
+                        done <<< "$commits"
+                        total=${#commit_array[@]}
+                        selected=0
+                    else
+                        read -p "Press Enter to continue..." -r
+                    fi
+                    hide_cursor
+                    stty -echo
+                    draw_header "$current_info"
+                    draw_commits "$commits" "$selected" "$current_commit"
+                fi
+                ;;
+            'u'|'U')  # Undo last restore
                 show_cursor
                 stty echo
-                show_commit_details "$full_hash" "$short_hash" "$message" "$date" "$author"
-                exit 0
+                undo_last_restore
+                if [ $? -eq 0 ]; then
+                    # After successful undo, refresh the state and continue
+                    echo -e "\n${CYAN}Refreshing commit list...${NC}"
+                    sleep 1
+                    # Get updated commit data and current info
+                    commits=$(get_commits)
+                    current_info=$(get_current_info)
+                    # Convert commits to array again
+                    commit_array=()
+                    while IFS='|' read -r line; do
+                        commit_array+=("$line")
+                    done <<< "$commits"
+                    total=${#commit_array[@]}
+                    selected=0
+                else
+                    read -p "Press Enter to continue..." -r
+                fi
+                hide_cursor
+                stty -echo
+                draw_header "$current_info"
+                draw_commits "$commits" "$selected" "$current_commit"
                 ;;
             'q'|'Q')  # Quit
                 break
